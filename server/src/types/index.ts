@@ -17,44 +17,21 @@ export interface Region {
   parentCode?: string;
 }
 
-export interface RegionTreeNode extends Region {
-  children?: RegionTreeNode[];
+export interface Station {
+  id: string;
+  name: string;
+  code: string;
+  provinceCode: string;
+  cityCode: string;
+  districtCode: string;
+  latitude: number;
+  longitude: number;
+  type: '4G' | '5G';
+  status: 'online' | 'offline' | 'maintenance';
+  capacity: number;
+  currentLoad: number;
+  createdAt: string;
 }
-
-export interface OverviewMetrics {
-  signalCoverage: number;
-  dropRate: number;
-  avgDownloadSpeed: number;
-  totalUsers: number;
-  trafficVolume: number;
-  complaintCount: number;
-}
-
-export interface TrendPoint {
-  timestamp: string;
-  timeSlot?: string;
-  signalCoverage: number;
-  dropRate: number;
-  avgDownloadSpeed: number;
-  satisfactionScore?: number;
-  totalUsers?: number;
-  trafficVolume?: number;
-  complaintCount?: number;
-  dropCallCount?: number;
-  totalCallCount?: number;
-}
-
-export interface RankingItem {
-  regionCode: string;
-  regionName: string;
-  signalCoverage: number;
-  dropRate: number;
-  rank: number;
-  avgDownloadSpeed?: number;
-  satisfaction?: number;
-}
-
-export type ViewLevel = 'country' | 'province' | 'city' | 'district';
 
 export interface Province {
   code: string;
@@ -92,6 +69,17 @@ export interface BaseStation {
   createdAt: string;
 }
 
+export interface RawStationMetrics {
+  id: string;
+  stationId: string;
+  timestamp: string;
+  signalStrength: number;
+  dropCallCount: number;
+  totalCallCount: number;
+  trafficGB: number;
+  complaintCount: number;
+}
+
 export interface NetworkMetrics {
   id: string;
   regionCode: string;
@@ -110,7 +98,7 @@ export interface NetworkMetrics {
 }
 
 export type AlertLevel = 1 | 2;
-export type AlertStatus = 'pending' | 'acknowledged' | 'reviewed' | 'approved' | 'rejected' | 'resolved';
+export type AlertStatus = 'pending_ack' | 'acknowledged' | 'reviewing' | 'approved' | 'rejected' | 'resolved';
 export type AlertType = 'drop_rate' | 'complaint_surge';
 
 export interface Alert {
@@ -131,6 +119,8 @@ export interface Alert {
   assignedEngineer?: string;
   resolution?: string;
   resolvedAt?: string;
+  createdAt: string;
+  upgradedAt?: string;
 }
 
 export interface ApprovalStep {

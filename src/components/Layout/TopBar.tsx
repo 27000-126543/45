@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Bell, ChevronDown, Search, Globe, Shield } from 'lucide-react';
-import { useApp, switchUserRole } from '../../context/AppContext';
+import { useApp } from '../../context/AppContext';
 import type { UserRole } from '../../types';
 
 const TopBar: React.FC = () => {
-  const { user, setUser, alerts } = useApp();
+  const { user, alerts, switchUserRole, refreshAllData } = useApp();
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   const pendingAlerts = alerts.filter(a => a.status === 'pending' || a.status === 'acknowledged').length;
 
@@ -15,10 +16,24 @@ const TopBar: React.FC = () => {
     city: '市级工程师',
   };
 
-  const handleRoleSwitch = (role: UserRole) => {
-    setUser(switchUserRole(role));
-    setShowRoleMenu(false);
+  const handleRoleSwitch = async (role: UserRole) => {
+    setSwitching(true);
+    try {
+      await switchUserRole(role);
+      await refreshAllData();
+    } finally {
+      setSwitching(false);
+      setShowRoleMenu(false);
+    }
   };
+
+  if (!user) {
+    return (
+      <header className="flex h-16 items-center justify-between border-b border-telecom-border bg-[#0d1321]/80 backdrop-blur px-6">
+        <div className="text-sm text-slate-400">加载中...</div>
+      </header>
+    );
+  }
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-telecom-border bg-[#0d1321]/80 backdrop-blur px-6">
@@ -52,6 +67,7 @@ const TopBar: React.FC = () => {
           <button
             onClick={() => setShowRoleMenu(!showRoleMenu)}
             className="flex items-center gap-2 rounded-lg border border-telecom-border bg-slate-900/50 py-1.5 pl-1.5 pr-3 transition hover:bg-slate-800"
+            disabled={switching}
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary-500 to-cyan-500 text-xs font-bold text-white">
               {user.name.charAt(0)}
@@ -75,6 +91,7 @@ const TopBar: React.FC = () => {
                 <button
                   key={role}
                   onClick={() => handleRoleSwitch(role)}
+                  disabled={switching}
                   className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition ${
                     user.role === role
                       ? 'bg-primary-500/10 text-primary-400'

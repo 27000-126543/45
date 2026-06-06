@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   AlertTriangle,
   Clock,
@@ -10,11 +10,13 @@ import {
   MapPin,
   MessageSquare,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import clsx from 'clsx';
 import Card from '../components/UI/Card';
 import { useApp } from '../context/AppContext';
-import type { Alert, AlertLevel } from '../types';
+import alertsApi from '../api/alerts';
+import type { Alert, AlertLevel, ApprovalStep } from '../types';
 import {
   formatDateTime,
   getAlertTypeText,
@@ -22,12 +24,49 @@ import {
   getStatusText,
 } from '../utils';
 
+const normalizeAlertStatus = (status: string): Alert['status'] => {
+  if (status === 'pending_ack') return 'pending';
+  if (status === 'reviewing') return 'reviewed';
+  return status as Alert['status'];
+};
+
 const Alerts: React.FC = () => {
-  const { alerts, approveAlert, updateAlert, user } = useApp();
+  const { alerts: contextAlerts, user } = useApp();
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [filterLevel, setFilterLevel] = useState<'all' | AlertLevel>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [comment, setComment] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const fetchAlerts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await alertsApi.getAlerts();
+      const normalized: Alert[] = data.map((a: any) => ({
+        ...a,
+        status: normalizeAlertStatus(a.status),
+        approvalHistory: (a.approvalHistory || []) as ApprovalStep[],
+      }));
+      setAlerts(normalized);
+    } catch (e: any) {
+      setError(e.message || '加载预警数据失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (contextAlerts && contextAlerts.length > 0) {
+      setAlerts(contextAlerts);
+      setLoading(false);
+    } else {
+      fetchAlerts();
+    }
+  }, [contextAlerts, fetchAlerts]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter(a => {
@@ -45,10 +84,53 @@ const Alerts: React.FC = () => {
     resolved: alerts.filter(a => a.status === 'resolved').length,
   }), [alerts]);
 
-  const handleApprove = (alert: Alert, level: 1 | 2 | 3) => {
-    const approverMap: Record<number, string> = { 1: '李工', 2: '王主管', 3: user.name };
-    approveAlert(alert.id, level, approverMap[level], comment || undefined);
-    setComment('');
+  const refreshSelectedAlert = useCallback(() => {
+    if (selectedAlert) {
+      const updated = alerts.find(a => a.id === selectedAlert.id);
+      if (updated) setSelectedAlert({ ...updated });
+    }
+  }, [selectedAlert, alerts]);
+
+  const handleApprove = async (alert: Alert) => {
+    setActionLoading(true);
+    try {
+      await alertsApi.approveAlert(alert.id, comment);
+      setComment('');
+      await fetchAlerts();
+      setSelectedAlert(null);
+    } catch (e: any) {
+      setError(e.message || '审批操作失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async (alert: Alert) => {
+    setActionLoading(true);
+    try {
+      await alertsApi.rejectAlert(alert.id, comment);
+      setComment('');
+      await fetchAlerts();
+      setSelectedAlert(null);
+    } catch (e: any) {
+      setError(e.message || '驳回操作失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResolve = async (alert: Alert) => {
+    setActionLoading(true);
+    try {
+      await alertsApi.resolveAlert(alert.id, comment);
+      setComment('');
+      await fetchAlerts();
+      setSelectedAlert(null);
+    } catch (e: any) {
+      setError(e.message || '解决操作失败');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleSelectAlert = (alert: Alert) => {
@@ -56,14 +138,28 @@ const Alerts: React.FC = () => {
   };
 
   const handleRefreshAlert = () => {
-    if (selectedAlert) {
-      const updated = alerts.find(a => a.id === selectedAlert.id);
-      if (updated) setSelectedAlert({ ...updated });
-    }
+    refreshSelectedAlert();
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-primary-400" />
+          <span className="text-sm text-slate-400">加载预警数据中...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-white">预警管理中心</h1>
@@ -73,7 +169,7 @@ const Alerts: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleRefreshAlert}
+            onClick={fetchAlerts}
             className="flex items-center gap-2 rounded-lg border border-telecom-border bg-slate-900 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
           >
             <RefreshCw size={14} />
@@ -423,7 +519,7 @@ const Alerts: React.FC = () => {
                 </div>
               )}
 
-              {selectedAlert.level === 2 && selectedAlert.status !== 'resolved' && (
+              {selectedAlert.status !== 'resolved' && selectedAlert.status !== 'rejected' && (
                 <div>
                   <div className="mb-2 text-xs font-medium text-white">审批操作</div>
                   <textarea
@@ -433,47 +529,48 @@ const Alerts: React.FC = () => {
                     className="mb-3 h-20 w-full resize-none rounded-lg border border-telecom-border bg-slate-900 p-3 text-sm text-white outline-none focus:border-primary-500"
                   />
                   <div className="flex flex-wrap gap-2">
-                    {selectedAlert.approvalHistory[0]?.status === 'pending' && (
+                    {selectedAlert.status === 'pending' && (
                       <button
-                        onClick={() => handleApprove(selectedAlert, 1)}
-                        className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600"
+                        onClick={() => handleApprove(selectedAlert)}
+                        disabled={actionLoading}
+                        className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 disabled:opacity-50"
                       >
-                        1级审批（工程师确认）
+                        {actionLoading ? <Loader2 size={14} className="mr-2 inline animate-spin" /> : null}
+                        确认预警
                       </button>
                     )}
-                    {selectedAlert.approvalHistory[0]?.status === 'approved' &&
-                      selectedAlert.approvalHistory[1]?.status === 'pending' && (
+                    {selectedAlert.level === 2 && (
+                      <>
                         <button
-                          onClick={() => handleApprove(selectedAlert, 2)}
-                          className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-600"
+                          onClick={() => handleApprove(selectedAlert)}
+                          disabled={actionLoading}
+                          className="rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-600 disabled:opacity-50"
                         >
-                          2级审批（主管复核）
+                          {actionLoading ? <Loader2 size={14} className="mr-2 inline animate-spin" /> : null}
+                          通过审批
                         </button>
-                      )}
-                    {selectedAlert.approvalHistory[1]?.status === 'approved' &&
-                      selectedAlert.approvalHistory[2]?.status === 'pending' &&
-                      user.role === 'headquarters' && (
                         <button
-                          onClick={() => handleApprove(selectedAlert, 3)}
-                          className="rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-600"
+                          onClick={() => handleReject(selectedAlert)}
+                          disabled={actionLoading}
+                          className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
                         >
-                          3级审批（总部批准）
+                          {actionLoading ? <Loader2 size={14} className="mr-2 inline animate-spin" /> : null}
+                          驳回
                         </button>
-                      )}
+                      </>
+                    )}
+                    {(selectedAlert.status === 'acknowledged' || selectedAlert.status === 'reviewed' || selectedAlert.status === 'approved') && (
+                      <button
+                        onClick={() => handleResolve(selectedAlert)}
+                        disabled={actionLoading}
+                        className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                      >
+                        {actionLoading ? <Loader2 size={14} className="mr-2 inline animate-spin" /> : null}
+                        标记已解决
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
-
-              {selectedAlert.status === 'pending' && (
-                <button
-                  onClick={() => {
-                    updateAlert(selectedAlert.id, { status: 'acknowledged' });
-                    handleRefreshAlert();
-                  }}
-                  className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600"
-                >
-                  确认预警
-                </button>
               )}
             </div>
           </div>

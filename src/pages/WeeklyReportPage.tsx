@@ -1,8 +1,9 @@
-import React from 'react';
-import { Printer, Download, AlertTriangle, CheckCircle, Clock, AlertCircle, Signal, PhoneOff, MessageSquare, Gauge } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Printer, Download, AlertTriangle, CheckCircle, Clock, AlertCircle, Signal, PhoneOff, MessageSquare, Gauge, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Card from '../components/UI/Card';
-import { weeklyReport } from '../data/mockData';
+import reportsApi from '../api/reports';
+import type { WeeklyReport } from '../types';
 import {
   getTrendIcon,
   getTrendColor,
@@ -12,127 +13,156 @@ import {
 } from '../utils';
 
 const WeeklyReportPage: React.FC = () => {
-  const report = weeklyReport;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<WeeklyReport | null>(null);
 
-  const trendData = [
-    {
-      name: '信号覆盖率(%)',
-      本周: report.metrics.signalCoverage.current,
-      上周: report.metrics.signalCoverage.lastWeek,
-      去年同期: report.metrics.signalCoverage.yearAgo,
-    },
-    {
-      name: '掉线率(%)',
-      本周: report.metrics.dropRate.current,
-      上周: report.metrics.dropRate.lastWeek,
-      去年同期: report.metrics.dropRate.yearAgo,
-    },
-    {
-      name: '投诉率(%)',
-      本周: report.metrics.complaintRate.current * 100,
-      上周: report.metrics.complaintRate.lastWeek * 100,
-      去年同期: report.metrics.complaintRate.yearAgo * 100,
-    },
-    {
-      name: '下载速率(Mbps)',
-      本周: report.metrics.avgDownloadSpeed.current,
-      上周: report.metrics.avgDownloadSpeed.lastWeek,
-      去年同期: report.metrics.avgDownloadSpeed.yearAgo,
-    },
-  ];
+  const fetchReport = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await reportsApi.getLatestReport();
+      setReport(data as unknown as WeeklyReport);
+    } catch (e: any) {
+      setError(e.message || '加载周报数据失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
+
+  const trendData = useMemo(() => {
+    if (!report) return [];
+    return [
+      {
+        name: '信号覆盖率(%)',
+        本周: report.metrics.signalCoverage.current,
+        上周: report.metrics.signalCoverage.lastWeek,
+        去年同期: report.metrics.signalCoverage.yearAgo,
+      },
+      {
+        name: '掉线率(%)',
+        本周: report.metrics.dropRate.current,
+        上周: report.metrics.dropRate.lastWeek,
+        去年同期: report.metrics.dropRate.yearAgo,
+      },
+      {
+        name: '投诉率(%)',
+        本周: report.metrics.complaintRate.current * 100,
+        上周: report.metrics.complaintRate.lastWeek * 100,
+        去年同期: report.metrics.complaintRate.yearAgo * 100,
+      },
+      {
+        name: '下载速率(Mbps)',
+        本周: report.metrics.avgDownloadSpeed.current,
+        上周: report.metrics.avgDownloadSpeed.lastWeek,
+        去年同期: report.metrics.avgDownloadSpeed.yearAgo,
+      },
+    ];
+  }, [report]);
 
   const calcChange = (current: number, last: number) => {
     if (last === 0) return 0;
     return ((current - last) / last) * 100;
   };
 
-  const metrics = [
-    {
-      key: 'signalCoverage',
-      title: '信号覆盖率',
-      icon: <Signal size={20} />,
-      color: '#10b981',
-      value: formatPercent(report.metrics.signalCoverage.current, 1),
-      lastWeek: formatPercent(report.metrics.signalCoverage.lastWeek, 1),
-      yearAgo: formatPercent(report.metrics.signalCoverage.yearAgo, 1),
-      trend: report.metrics.signalCoverage.trend,
-      woW: calcChange(report.metrics.signalCoverage.current, report.metrics.signalCoverage.lastWeek),
-      yoY: calcChange(report.metrics.signalCoverage.current, report.metrics.signalCoverage.yearAgo),
-      isGoodWhenDown: false,
-    },
-    {
-      key: 'dropRate',
-      title: '掉线率',
-      icon: <PhoneOff size={20} />,
-      color: '#ef4444',
-      value: formatPercent(report.metrics.dropRate.current, 2),
-      lastWeek: formatPercent(report.metrics.dropRate.lastWeek, 2),
-      yearAgo: formatPercent(report.metrics.dropRate.yearAgo, 2),
-      trend: report.metrics.dropRate.trend,
-      woW: calcChange(report.metrics.dropRate.current, report.metrics.dropRate.lastWeek),
-      yoY: calcChange(report.metrics.dropRate.current, report.metrics.dropRate.yearAgo),
-      isGoodWhenDown: true,
-    },
-    {
-      key: 'complaintRate',
-      title: '投诉率',
-      icon: <MessageSquare size={20} />,
-      color: '#f59e0b',
-      value: formatPercent(report.metrics.complaintRate.current * 100, 2),
-      lastWeek: formatPercent(report.metrics.complaintRate.lastWeek * 100, 2),
-      yearAgo: formatPercent(report.metrics.complaintRate.yearAgo * 100, 2),
-      trend: report.metrics.complaintRate.trend,
-      woW: calcChange(report.metrics.complaintRate.current, report.metrics.complaintRate.lastWeek),
-      yoY: calcChange(report.metrics.complaintRate.current, report.metrics.complaintRate.yearAgo),
-      isGoodWhenDown: true,
-    },
-    {
-      key: 'avgDownloadSpeed',
-      title: '平均下载速率',
-      icon: <Gauge size={20} />,
-      color: '#3b82f6',
-      value: formatSpeed(report.metrics.avgDownloadSpeed.current),
-      lastWeek: formatSpeed(report.metrics.avgDownloadSpeed.lastWeek),
-      yearAgo: formatSpeed(report.metrics.avgDownloadSpeed.yearAgo),
-      trend: report.metrics.avgDownloadSpeed.trend,
-      woW: calcChange(report.metrics.avgDownloadSpeed.current, report.metrics.avgDownloadSpeed.lastWeek),
-      yoY: calcChange(report.metrics.avgDownloadSpeed.current, report.metrics.avgDownloadSpeed.yearAgo),
-      isGoodWhenDown: false,
-    },
-  ];
+  const metrics = useMemo(() => {
+    if (!report) return [];
+    return [
+      {
+        key: 'signalCoverage',
+        title: '信号覆盖率',
+        icon: <Signal size={20} />,
+        color: '#10b981',
+        value: formatPercent(report.metrics.signalCoverage.current, 1),
+        lastWeek: formatPercent(report.metrics.signalCoverage.lastWeek, 1),
+        yearAgo: formatPercent(report.metrics.signalCoverage.yearAgo, 1),
+        trend: report.metrics.signalCoverage.trend,
+        woW: calcChange(report.metrics.signalCoverage.current, report.metrics.signalCoverage.lastWeek),
+        yoY: calcChange(report.metrics.signalCoverage.current, report.metrics.signalCoverage.yearAgo),
+        isGoodWhenDown: false,
+      },
+      {
+        key: 'dropRate',
+        title: '掉线率',
+        icon: <PhoneOff size={20} />,
+        color: '#ef4444',
+        value: formatPercent(report.metrics.dropRate.current, 2),
+        lastWeek: formatPercent(report.metrics.dropRate.lastWeek, 2),
+        yearAgo: formatPercent(report.metrics.dropRate.yearAgo, 2),
+        trend: report.metrics.dropRate.trend,
+        woW: calcChange(report.metrics.dropRate.current, report.metrics.dropRate.lastWeek),
+        yoY: calcChange(report.metrics.dropRate.current, report.metrics.dropRate.yearAgo),
+        isGoodWhenDown: true,
+      },
+      {
+        key: 'complaintRate',
+        title: '投诉率',
+        icon: <MessageSquare size={20} />,
+        color: '#f59e0b',
+        value: formatPercent(report.metrics.complaintRate.current * 100, 2),
+        lastWeek: formatPercent(report.metrics.complaintRate.lastWeek * 100, 2),
+        yearAgo: formatPercent(report.metrics.complaintRate.yearAgo * 100, 2),
+        trend: report.metrics.complaintRate.trend,
+        woW: calcChange(report.metrics.complaintRate.current, report.metrics.complaintRate.lastWeek),
+        yoY: calcChange(report.metrics.complaintRate.current, report.metrics.complaintRate.yearAgo),
+        isGoodWhenDown: true,
+      },
+      {
+        key: 'avgDownloadSpeed',
+        title: '平均下载速率',
+        icon: <Gauge size={20} />,
+        color: '#3b82f6',
+        value: formatSpeed(report.metrics.avgDownloadSpeed.current),
+        lastWeek: formatSpeed(report.metrics.avgDownloadSpeed.lastWeek),
+        yearAgo: formatSpeed(report.metrics.avgDownloadSpeed.yearAgo),
+        trend: report.metrics.avgDownloadSpeed.trend,
+        woW: calcChange(report.metrics.avgDownloadSpeed.current, report.metrics.avgDownloadSpeed.lastWeek),
+        yoY: calcChange(report.metrics.avgDownloadSpeed.current, report.metrics.avgDownloadSpeed.yearAgo),
+        isGoodWhenDown: false,
+      },
+    ];
+  }, [report]);
 
-  const alertSummaryCards = [
-    {
-      title: '一级预警',
-      value: report.alertSummary.level1,
-      icon: <AlertTriangle size={22} />,
-      color: '#f59e0b',
-    },
-    {
-      title: '二级预警',
-      value: report.alertSummary.level2,
-      icon: <AlertCircle size={22} />,
-      color: '#ef4444',
-    },
-    {
-      title: '已解决',
-      value: report.alertSummary.resolved,
-      icon: <CheckCircle size={22} />,
-      color: '#10b981',
-    },
-    {
-      title: '待处理',
-      value: report.alertSummary.pending,
-      icon: <Clock size={22} />,
-      color: '#3b82f6',
-    },
-  ];
+  const alertSummaryCards = useMemo(() => {
+    if (!report) return [];
+    return [
+      {
+        title: '一级预警',
+        value: report.alertSummary.level1,
+        icon: <AlertTriangle size={22} />,
+        color: '#f59e0b',
+      },
+      {
+        title: '二级预警',
+        value: report.alertSummary.level2,
+        icon: <AlertCircle size={22} />,
+        color: '#ef4444',
+      },
+      {
+        title: '已解决',
+        value: report.alertSummary.resolved,
+        icon: <CheckCircle size={22} />,
+        color: '#10b981',
+      },
+      {
+        title: '待处理',
+        value: report.alertSummary.pending,
+        icon: <Clock size={22} />,
+        color: '#3b82f6',
+      },
+    ];
+  }, [report]);
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleExport = () => {
+    if (!report) return;
     const content = JSON.stringify(report, null, 2);
     const blob = new Blob([content], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -143,8 +173,37 @@ const WeeklyReportPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-primary-400" />
+          <span className="text-sm text-slate-400">加载周报数据中...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
+        <AlertTriangle size={48} className="text-amber-400" />
+        <div className="text-center">
+          <h2 className="text-lg font-bold text-white">暂无周报数据</h2>
+          <p className="mt-1 text-sm text-slate-400">{error || '请稍后再试'}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-white">网络运营健康周报</h1>
@@ -275,73 +334,94 @@ const WeeklyReportPage: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card title="三大主要问题">
-          <div className="space-y-3">
-            {report.topIssues.map((issue, idx) => (
-              <div
-                key={idx}
-                className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-800/30 p-3"
-              >
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-red-500/20 text-sm font-bold text-red-400">
-                  {String(idx + 1).padStart(2, '0')}
+          {report.topIssues.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+              <CheckCircle size={32} className="mb-2 text-green-400" />
+              <p className="text-sm">本周无重大问题</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {report.topIssues.map((issue, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-800/30 p-3"
+                >
+                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-red-500/20 text-sm font-bold text-red-400">
+                    {String(idx + 1).padStart(2, '0')}
+                  </div>
+                  <p className="pt-0.5 text-sm text-slate-200">{issue}</p>
                 </div>
-                <p className="pt-0.5 text-sm text-slate-200">{issue}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card title="优化参数建议">
-          <div className="space-y-3">
-            {report.optimizationRecommendations.map((rec, idx) => (
-              <div
-                key={idx}
-                className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-800/30 p-3"
-              >
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-sm font-bold text-blue-400">
-                  {String(idx + 1).padStart(2, '0')}
+          {report.optimizationRecommendations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+              <CheckCircle size={32} className="mb-2 text-green-400" />
+              <p className="text-sm">暂无优化建议</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {report.optimizationRecommendations.map((rec, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-3 rounded-lg border border-slate-700/50 bg-slate-800/30 p-3"
+                >
+                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-sm font-bold text-blue-400">
+                    {String(idx + 1).padStart(2, '0')}
+                  </div>
+                  <p className="pt-0.5 text-sm text-slate-200">{rec}</p>
                 </div>
-                <p className="pt-0.5 text-sm text-slate-200">{rec}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 
       <Card title="基站维护计划表">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-telecom-border text-xs text-slate-400">
-                <th className="pb-3 pr-4 font-medium">日期</th>
-                <th className="pb-3 pr-4 font-medium">基站编号</th>
-                <th className="pb-3 font-medium">维护类型</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.maintenancePlan.map((plan, idx) => (
-                <tr
-                  key={idx}
-                  className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30"
-                >
-                  <td className="py-3 pr-4 text-white">{plan.date}</td>
-                  <td className="py-3 pr-4">
-                    <div className="flex flex-wrap gap-1">
-                      {plan.stations.map(station => (
-                        <span
-                          key={station}
-                          className="rounded border border-telecom-border bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
-                        >
-                          {station}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-3 text-slate-300">{plan.type}</td>
+        {report.maintenancePlan.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+            <CheckCircle size={32} className="mb-2 text-green-400" />
+            <p className="text-sm">本周暂无维护计划</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-telecom-border text-xs text-slate-400">
+                  <th className="pb-3 pr-4 font-medium">日期</th>
+                  <th className="pb-3 pr-4 font-medium">基站编号</th>
+                  <th className="pb-3 font-medium">维护类型</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {report.maintenancePlan.map((plan, idx) => (
+                  <tr
+                    key={idx}
+                    className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30"
+                  >
+                    <td className="py-3 pr-4 text-white">{plan.date}</td>
+                    <td className="py-3 pr-4">
+                      <div className="flex flex-wrap gap-1">
+                        {plan.stations.map(station => (
+                          <span
+                            key={station}
+                            className="rounded border border-telecom-border bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
+                          >
+                            {station}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-3 text-slate-300">{plan.type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       <Card title="指标趋势对比图（本周 vs 上周 vs 去年同期）">
